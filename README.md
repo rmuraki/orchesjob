@@ -18,13 +18,21 @@ the full history of past runs intact.
 
 ## Requirements
 
-- Python ≥ .12
+- Python ≥ 3.12
 - No third-party dependencies
 
 ## Installation
 
+**Recommended — [pipx](https://pipx.pypa.io/) (isolated, globally available CLI):**
+
 ```bash
-pip install .
+pipx install orchesjob
+```
+
+**pip:**
+
+```bash
+pip install orchesjob
 ```
 
 The default state directory is `/var/lib/orchesjob`. Override it with the
