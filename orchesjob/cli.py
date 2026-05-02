@@ -247,6 +247,7 @@ def format_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 def cmd_status(args: argparse.Namespace) -> None:
     home = st.get_home()
+    st.init_db(home)
     conn = st.db_connect(home)
     try:
         show_all: bool = getattr(args, "all", False)
@@ -317,22 +318,37 @@ def cmd_clean(args: argparse.Namespace) -> None:
             EXIT_INVALID_ARGS,
         )
 
+    from datetime import timezone as _tz
+    cutoff_utc = cutoff.astimezone(_tz.utc)
+
+    def _ts_before_cutoff(ts_str: Optional[str]) -> bool:
+        if not ts_str:
+            return False
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_tz.utc)
+            return ts.astimezone(_tz.utc) < cutoff_utc
+        except ValueError:
+            return False
+
     home = st.get_home()
+    st.init_db(home)
     conn = st.db_connect(home)
     try:
         # Only terminal jobs are eligible; RUNNING/STARTING are never touched.
         terminal = ", ".join(f"'{s}'" for s in sorted(_TERMINAL_STATUSES))
-        rows = conn.execute(
+        all_rows = conn.execute(
             f"""SELECT j.job_id, j.run_key, j.stdout_file, j.stderr_file,
                        j.finished_at, j.started_at,
                        rk.job_id AS current_job_id
                 FROM jobs j
                 LEFT JOIN run_keys rk ON rk.run_key = j.run_key AND rk.job_id = j.job_id
                 WHERE j.status IN ({terminal})
-                AND datetime(COALESCE(j.finished_at, j.started_at)) < datetime(?)
                 ORDER BY j.started_at""",
-            (cutoff.isoformat(),),
         ).fetchall()
+
+        rows = [r for r in all_rows if _ts_before_cutoff(r["finished_at"] or r["started_at"])]
 
         if not rows:
             output_json({"deleted": 0, "errors": 0})
