@@ -1,4 +1,4 @@
-.github
+.github/copilot-instruction.md
 .ai.code.files/**
 .aider*
 .venv
