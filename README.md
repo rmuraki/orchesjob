@@ -1,11 +1,12 @@
 # orchesjob
 
-A lightweight, idempotent one-shot job runner backed by SQLite.
+## Overview
 
-Submit a command with a **run key**. If a job for that key is already running,
-orchesjob returns the existing job instead of starting a duplicate. Once the job
-finishes, the same run key can be reused to start a fresh execution — keeping
-the full history of past runs intact.
+`orchesjob` is a lightweight, idempotent one-shot job runner designed for remote orchestration scenarios.
+
+It is intended to be used with external orchestrators such as Apache Airflow, Amazon MWAA, cron, CI/CD pipelines, or SSH-based automation, where a remote job needs to be started, monitored, and safely resumed across retries.
+
+A primary goal of `orchesjob` is to prevent duplicate execution of non-idempotent remote jobs when the orchestrator retries a start operation after SSH failures, timeouts, worker interruptions, or network issues.
 
 ## Features
 
