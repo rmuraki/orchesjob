@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 
+from . import __version__
 from . import state as st
 
 # Exit codes
@@ -402,6 +403,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="orchesjob",
         description="Lightweight idempotent one-shot job runner",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
