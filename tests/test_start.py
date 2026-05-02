@@ -77,7 +77,6 @@ def test_start_idempotent_while_running(home, cli, jcli):
     finally:
         kill_pid(d1.get("pid"))
 
-
 def test_start_idempotent_returns_same_job_id(home, cli, jcli):
     stdout1, _, _ = cli("start", "--run-key", "k-idem2", "--", "sleep", "30")
     d1 = json.loads(stdout1)
