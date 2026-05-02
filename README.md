@@ -66,22 +66,38 @@ orchesjob logs --run-key nightly-backup --stream stdout
 Start a job or return the existing one if it is still running.
 
 ```
-orchesjob start --run-key KEY [--sync] [--] COMMAND [ARGS...]
+orchesjob start --run-key KEY [--sync] [--strict] [--] COMMAND [ARGS...]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--run-key KEY` | Idempotency key (required) |
 | `--sync` | Block until the job finishes |
+| `--strict` | One execution per run key, ever — see below |
 | `--` | Separator between orchesjob flags and the command |
 
 **Idempotency rules:**
 
-| Existing job state | Behaviour |
-|--------------------|-----------|
-| `RUNNING` / `STARTING` | Returns the existing job (`"existing": true`) |
-| Terminal (`SUCCEEDED`, `FAILED`, `LOST`, `CANCELLED`) | Starts a new job |
-| None | Starts a new job |
+| Existing job state | Default behaviour | With `--strict` |
+|--------------------|-------------------|-----------------|
+| `RUNNING` / `STARTING` | Returns the existing job | Returns the existing job |
+| Terminal (`SUCCEEDED`, `FAILED`, `LOST`, `CANCELLED`) | Starts a new job | Returns the existing job |
+| None | Starts a new job | Starts a new job |
+
+#### Strict idempotency
+
+By default, orchesjob provides active-execution idempotency: repeated `start`
+calls with the same `run_key` return the existing job only while it is
+`STARTING` or `RUNNING`.
+
+Use `--strict` when the same `run_key` must never create more than one physical
+execution, even after the previous job has already reached a terminal state.
+This is useful when the run key already encodes uniqueness (e.g. a date or
+event ID) and re-triggering would be a bug.
+
+```bash
+orchesjob start --run-key daily-import-2026-05-02 --strict -- /jobs/import.sh
+```
 
 **Example output:**
 
@@ -90,6 +106,7 @@ orchesjob start --run-key KEY [--sync] [--] COMMAND [ARGS...]
   "accepted": true,
   "existing": false,
   "mode": "sync",
+  "strict": false,
   "run_key": "nightly-backup",
   "job_id": "3f2a1b4c-...",
   "pid": 12345,

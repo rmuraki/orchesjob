@@ -65,11 +65,12 @@ def resolve_job_id(conn: sqlite3.Connection, run_key: Optional[str], job_id: Opt
     die("Either --run-key or --job-id is required", EXIT_INVALID_ARGS)
 
 
-def build_start_response(job: Dict[str, Any], existing: bool, mode: str) -> Dict[str, Any]:
+def build_start_response(job: Dict[str, Any], existing: bool, mode: str, strict: bool) -> Dict[str, Any]:
     return {
         "accepted": not existing,
         "existing": existing,
         "mode": mode,
+        "strict": strict,
         "run_key": job.get("run_key"),
         "job_id": job["job_id"],
         "pid": job.get("target_pid") or job.get("worker_pid"),
@@ -151,6 +152,7 @@ def cmd_start(args: argparse.Namespace) -> None:
         die("command is required (provide it after --)", EXIT_INVALID_ARGS)
 
     sync_mode: bool = args.sync
+    strict: bool = args.strict
     mode = "sync" if sync_mode else "async"
 
     home = st.get_home()
@@ -169,13 +171,14 @@ def cmd_start(args: argparse.Namespace) -> None:
             (run_key,),
         ).fetchone()
 
-        if row is not None and row["status"] not in _TERMINAL_STATUSES:
-            # Job is still active — idempotent return
+        if row is not None and (row["status"] not in _TERMINAL_STATUSES or strict):
+            # Active job → always return existing.
+            # Terminal job + --strict → also return existing (one execution per run_key, ever).
             existing = True
             job_id = row["job_id"]
             conn.execute("COMMIT")
         else:
-            # No prior job, or prior job has finished — start a new one
+            # No prior job, or prior job has finished (and --strict not set) — start a new one
             job_id = st.new_job_id()
             started_at = st.now_iso()
             stdout_file = str(st.stdout_path(home, job_id))
@@ -221,7 +224,7 @@ def cmd_start(args: argparse.Namespace) -> None:
         else:
             job = reconcile_running_job(conn, job_id)
 
-        output_json(build_start_response(job, existing=existing, mode=mode))
+        output_json(build_start_response(job, existing=existing, mode=mode, strict=strict))
 
     finally:
         conn.close()
@@ -399,6 +402,11 @@ def main() -> None:
         "--sync",
         action="store_true",
         help="Wait for job completion before returning",
+    )
+    p_start.add_argument(
+        "--strict",
+        action="store_true",
+        help="Never create more than one execution per run_key, even after the previous job has finished",
     )
     p_start.add_argument(
         "command",
