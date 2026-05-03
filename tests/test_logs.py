@@ -41,3 +41,4 @@ def test_logs_empty_stdout(jcli, cli):
 def test_logs_run_key_not_found(cli):
     _, stderr, rc = cli("logs", "--run-key", "no-such-key")
     assert rc != 0
+    assert "not found" in stderr
