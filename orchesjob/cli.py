@@ -134,6 +134,7 @@ def format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "stdout_file": job.get("stdout_file"),
         "stderr_file": job.get("stderr_file"),
         "attempt_no": job.get("attempt_no"),
+        "strict": bool(job.get("strict") or 0),
         "rerun_of_job_id": job.get("rerun_of_job_id"),
         "rerun_reason": job.get("rerun_reason"),
         "abort_reason": job.get("abort_reason"),
@@ -233,12 +234,27 @@ def _valid_strict_override(conn: sqlite3.Connection, run_key: str, now: int) -> 
     ).fetchone()
 
 
+def _format_strict_override(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    return {
+        "allowed_at": row["allowed_at"],
+        "allowed_at_iso": st.timestamp_to_iso(row["allowed_at"]),
+        "used_at": row["used_at"],
+        "used_at_iso": st.timestamp_to_iso(row["used_at"]),
+        "reason": row["reason"],
+        "expires_at": row["expires_at"],
+        "expires_at_iso": st.timestamp_to_iso(row["expires_at"]),
+    }
+
+
 def _insert_job_locked(
     conn: sqlite3.Connection,
     *,
     home: pathlib.Path,
     run_key: str,
     command: Sequence[str],
+    strict: bool = False,
     rerun_of_job_id: Optional[str] = None,
     rerun_reason: Optional[str] = None,
 ) -> str:
@@ -252,9 +268,9 @@ def _insert_job_locked(
         """INSERT INTO jobs
            (job_id, run_key, worker_pid, target_pid, command, status,
             exit_code, stdout_file, stderr_file, started_at, finished_at, updated_at,
-            aborted_at, abort_reason, rerun_of_job_id, attempt_no, rerun_reason)
+            aborted_at, abort_reason, rerun_of_job_id, attempt_no, rerun_reason, strict)
            VALUES (?, ?, NULL, NULL, ?, 'STARTING', NULL, ?, ?, ?, NULL, ?,
-                   NULL, NULL, ?, ?, ?)""",
+                   NULL, NULL, ?, ?, ?, ?)""",
         (
             job_id,
             run_key,
@@ -266,6 +282,7 @@ def _insert_job_locked(
             rerun_of_job_id,
             attempt_no,
             rerun_reason,
+            int(strict),
         ),
     )
 
@@ -393,6 +410,7 @@ def cmd_start(args: argparse.Namespace) -> None:
                 home=home,
                 run_key=run_key,
                 command=command,
+                strict=strict,
                 rerun_of_job_id=rerun_of_job_id,
                 rerun_reason=rerun_reason,
             )
@@ -437,6 +455,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         show_all: bool = getattr(args, "all", False)
         run_key: Optional[str] = getattr(args, "run_key", None)
         job_id: Optional[str] = getattr(args, "job_id", None)
+        now = st.now_ts()
 
         if show_running:
             rows = conn.execute(
@@ -446,7 +465,12 @@ def cmd_status(args: argparse.Namespace) -> None:
             for row in rows:
                 job = reconcile_running_job(conn, row["job_id"])
                 if job["status"] in _ACTIVE_STATUSES:
-                    running.append(format_job(job))
+                    out = format_job(job)
+                    key = job.get("run_key")
+                    if key:
+                        override = _valid_strict_override(conn, key, now)
+                        out["strict_override"] = _format_strict_override(override)
+                    running.append(out)
             output_json(running)
             return
 
@@ -459,18 +483,27 @@ def cmd_status(args: argparse.Namespace) -> None:
             ).fetchall()
             if not rows:
                 die(f"No jobs found for run_key: {run_key}", EXIT_NOT_FOUND)
+            override = _valid_strict_override(conn, run_key, now)
+            formatted_override = _format_strict_override(override)
             history = []
             for row in rows:
                 job = st.row_to_job(row)
                 if job["status"] in _ACTIVE_STATUSES:
                     job = reconcile_running_job(conn, job["job_id"])
-                history.append(format_job(job))
+                out = format_job(job)
+                out["strict_override"] = formatted_override
+                history.append(out)
             output_json(history)
             return
 
         resolved_id = resolve_job_id(conn, run_key, job_id)
         job = reconcile_running_job(conn, resolved_id)
-        output_json(format_job(job))
+        out = format_job(job)
+        key = job.get("run_key")
+        if key:
+            override = _valid_strict_override(conn, key, now)
+            out["strict_override"] = _format_strict_override(override)
+        output_json(out)
     finally:
         conn.close()
 

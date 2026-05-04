@@ -168,7 +168,8 @@ def _rebuild_tables_with_integer_timestamps(conn: sqlite3.Connection) -> None:
                 abort_reason    TEXT,
                 rerun_of_job_id TEXT,
                 attempt_no      INTEGER NOT NULL DEFAULT 1,
-                rerun_reason    TEXT
+                rerun_reason    TEXT,
+                strict          INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE run_keys (
                 run_key    TEXT PRIMARY KEY,
@@ -188,7 +189,7 @@ def _rebuild_tables_with_integer_timestamps(conn: sqlite3.Connection) -> None:
                 job_id, run_key, worker_pid, target_pid, command, status,
                 exit_code, stdout_file, stderr_file, started_at, finished_at,
                 updated_at, aborted_at, abort_reason, rerun_of_job_id,
-                attempt_no, rerun_reason
+                attempt_no, rerun_reason, strict
             )
             SELECT
                 job_id,
@@ -207,7 +208,8 @@ def _rebuild_tables_with_integer_timestamps(conn: sqlite3.Connection) -> None:
                 {old_expr('abort_reason')},
                 {old_expr('rerun_of_job_id')},
                 {old_expr('attempt_no', '1')},
-                {old_expr('rerun_reason')}
+                {old_expr('rerun_reason')},
+                {old_expr('strict', '0')}
             FROM jobs_old
             """
         )
@@ -273,7 +275,8 @@ def init_db(home: pathlib.Path) -> None:
                 abort_reason    TEXT,
                 rerun_of_job_id TEXT,
                 attempt_no      INTEGER NOT NULL DEFAULT 1,
-                rerun_reason    TEXT
+                rerun_reason    TEXT,
+                strict          INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS run_keys (
                 run_key    TEXT PRIMARY KEY,
@@ -301,6 +304,7 @@ def init_db(home: pathlib.Path) -> None:
         _ensure_column(conn, "jobs", "rerun_of_job_id", "TEXT")
         _ensure_column(conn, "jobs", "attempt_no", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "jobs", "rerun_reason", "TEXT")
+        _ensure_column(conn, "jobs", "strict", "INTEGER NOT NULL DEFAULT 0")
         if _needs_table_rebuild_for_integer_timestamps(conn):
             _rebuild_tables_with_integer_timestamps(conn)
         _migrate_legacy_timestamps(conn)
